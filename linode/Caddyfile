@@ -1,0 +1,7 @@
+help.f3denverco.com {
+    reverse_proxy localhost:8080
+}
+
+:80 {
+    reverse_proxy localhost:8080
+}

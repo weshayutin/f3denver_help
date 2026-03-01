@@ -1,0 +1,42 @@
+{{define "title"}}My Tickets — F3 Denver Help Desk{{end}}
+{{define "content"}}
+<h1>Look Up Your Tickets</h1>
+<form class="lookup-form" method="GET" action="/tickets">
+    <div class="form-group">
+        <label for="f3_name">F3 Name</label>
+        <input type="text" id="f3_name" name="f3_name" value="{{.F3Name}}" placeholder="Your F3 nickname">
+    </div>
+    <button type="submit" class="btn">Look Up</button>
+</form>
+{{if .F3Name}}
+{{if .Tickets}}
+<p class="ticket-count">{{len .Tickets}} ticket(s) for {{.F3Name}}</p>
+<div class="table-wrap">
+    <table class="ticket-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Tickets}}
+            <tr>
+                <td>#{{.ID}}</td>
+                <td>{{.TicketType}}</td>
+                <td><span class="status status-{{.Status}}">{{.Status}}</span></td>
+                <td>{{.CreatedAt}}</td>
+                <td><a href="/ticket/{{.ID}}" class="btn btn-sm">View</a></td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{else}}
+<p class="no-tickets">No tickets found for {{.F3Name}}.</p>
+{{end}}
+{{end}}
+{{end}}

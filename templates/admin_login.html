@@ -1,0 +1,14 @@
+{{define "title"}}Admin Login — F3 Denver Help Desk{{end}}
+{{define "content"}}
+<h1>Admin Login</h1>
+{{if .Error}}
+<div class="alert alert-error">{{.Error}}</div>
+{{end}}
+<form class="admin-login-form" method="POST" action="/admin/login">
+    <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autofocus>
+    </div>
+    <button type="submit" class="btn">Log In</button>
+</form>
+{{end}}

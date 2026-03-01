@@ -1,0 +1,15 @@
+{{define "title"}}Edit Tips — F3 Denver Help Desk{{end}}
+{{define "content"}}
+<h1>Edit Tips / Troubleshooting Page</h1>
+{{if .Error}}
+<div class="alert alert-error">{{.Error}}</div>
+{{end}}
+<form method="POST" action="/admin/tips" class="tips-editor-form">
+    <div class="form-group">
+        <label for="body">Markdown content</label>
+        <textarea id="body" name="body" rows="24" class="markdown-editor">{{.Body}}</textarea>
+    </div>
+    <button type="submit" class="btn">Save</button>
+    <a href="/tips" class="btn btn-secondary">Preview</a>
+</form>
+{{end}}

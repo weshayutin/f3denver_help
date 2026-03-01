@@ -1,0 +1,17 @@
+# Binary
+f3denver_help
+
+# Environment with real credentials
+.env
+linode/setup.sh
+
+# SQLite and editable data (persist via volume in prod)
+data/*.db
+data/tips.md
+
+# IDE
+.idea/
+.vscode/
+
+# Cache (for future use)
+cache/*

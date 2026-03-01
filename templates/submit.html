@@ -1,0 +1,70 @@
+{{define "title"}}Submit a Ticket — F3 Denver Help Desk{{end}}
+{{define "content"}}
+<h1>Submit a Help Ticket</h1>
+{{if .Error}}
+<div class="alert alert-error">{{.Error}}</div>
+{{end}}
+<form class="ticket-form" method="POST" action="/submit" id="ticket-form">
+    <div class="form-group">
+        <label for="ticket_type">Request Type *</label>
+        <select name="ticket_type" id="ticket_type" required>
+            <option value="">— Select —</option>
+            <option value="preblast">Preblast</option>
+            <option value="backblast">Backblast</option>
+            <option value="yeti">Yeti / Achievement Tracking</option>
+            <option value="website">F3 Denver Website</option>
+            <option value="other">Other</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="hospital_name">Hospital Name *</label>
+        <input type="text" id="hospital_name" name="hospital_name" required placeholder="Your real name">
+    </div>
+    <div class="form-group">
+        <label for="f3_name">F3 Name *</label>
+        <input type="text" id="f3_name" name="f3_name" required placeholder="Your F3 nickname">
+    </div>
+    <div class="form-group field-ao">
+        <label for="ao">AO *</label>
+        <select name="ao" id="ao">
+            <option value="">— Select AO —</option>
+            {{range .AOs}}
+            <option value="{{.}}">{{.}}</option>
+            {{end}}
+        </select>
+    </div>
+    <div class="form-group field-event-date">
+        <label for="event_date">Event Date *</label>
+        <input type="date" id="event_date" name="event_date">
+    </div>
+    <div class="form-group field-url">
+        <label for="url">URL *</label>
+        <input type="url" id="url" name="url" placeholder="https://f3denver.com/...">
+    </div>
+    <div class="form-group">
+        <label for="description">Description *</label>
+        <textarea id="description" name="description" required rows="4" placeholder="Describe the issue or request..."></textarea>
+    </div>
+    <button type="submit" class="btn">Submit Ticket</button>
+</form>
+<script>
+(function() {
+    var form = document.getElementById('ticket-form');
+    var typeSelect = document.getElementById('ticket_type');
+    var aoGroup = document.querySelector('.field-ao');
+    var eventGroup = document.querySelector('.field-event-date');
+    var urlGroup = document.querySelector('.field-url');
+    function toggle() {
+        var t = (typeSelect.value || '').toLowerCase();
+        aoGroup.style.display = (t === 'preblast' || t === 'backblast' || t === 'yeti') ? 'block' : 'none';
+        eventGroup.style.display = (t === 'preblast' || t === 'backblast') ? 'block' : 'none';
+        urlGroup.style.display = (t === 'website') ? 'block' : 'none';
+        document.getElementById('ao').required = (t === 'preblast' || t === 'backblast' || t === 'yeti');
+        document.getElementById('event_date').required = (t === 'preblast' || t === 'backblast');
+        document.getElementById('url').required = (t === 'website');
+    }
+    typeSelect.addEventListener('change', toggle);
+    toggle();
+})();
+</script>
+{{end}}

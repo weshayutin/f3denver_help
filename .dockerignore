@@ -1,0 +1,10 @@
+.git
+.env
+*.db
+data/*.db
+data/tips.md
+cache/*.json
+.gitignore
+README.md
+*.md
+!data/tips.md

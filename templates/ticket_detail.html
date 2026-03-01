@@ -1,0 +1,43 @@
+{{define "title"}}Ticket #{{.Ticket.ID}} — F3 Denver Help Desk{{end}}
+{{define "content"}}
+<h1>Ticket #{{.Ticket.ID}}</h1>
+<div class="ticket-detail">
+    <dl>
+        <dt>Status</dt>
+        <dd><span class="status status-{{.Ticket.Status}}">{{.Ticket.Status}}</span></dd>
+        <dt>Type</dt>
+        <dd>{{.Ticket.TicketType}}</dd>
+        <dt>Created</dt>
+        <dd>{{.Ticket.CreatedAt}}</dd>
+        <dt>Updated</dt>
+        <dd>{{.Ticket.UpdatedAt}}</dd>
+        <dt>Hospital Name</dt>
+        <dd>{{.Ticket.HospitalName}}</dd>
+        <dt>F3 Name</dt>
+        <dd>{{.Ticket.F3Name}}</dd>
+        {{if .Ticket.AO}}
+        <dt>AO</dt>
+        <dd>{{.Ticket.AO}}</dd>
+        {{end}}
+        {{if .Ticket.EventDate}}
+        <dt>Event Date</dt>
+        <dd>{{.Ticket.EventDate}}</dd>
+        {{end}}
+        {{if .Ticket.URL}}
+        <dt>URL</dt>
+        <dd><a href="{{.Ticket.URL}}" target="_blank" rel="noopener">{{.Ticket.URL}}</a></dd>
+        {{end}}
+        <dt>Description</dt>
+        <dd class="description">{{.Ticket.Description}}</dd>
+        {{if .Ticket.AdminNotes}}
+        <dt>Admin Notes</dt>
+        <dd>{{.Ticket.AdminNotes}}</dd>
+        {{end}}
+        {{if .Ticket.ResolvedAt}}
+        <dt>Resolved</dt>
+        <dd>{{.Ticket.ResolvedAt}}</dd>
+        {{end}}
+    </dl>
+</div>
+<p><a href="/tickets" class="btn">Back to My Tickets</a></p>
+{{end}}
