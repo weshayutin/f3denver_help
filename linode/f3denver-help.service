@@ -1,17 +1,22 @@
 [Unit]
 Description=F3 Denver Help Desk
 After=network.target
+After=network-online.target
 
 [Service]
-ExecStartPre=-/usr/bin/podman rm -f f3denver-help
-ExecStart=/usr/bin/podman run --name f3denver-help \
-    --env-file /opt/f3help/.env \
-    -p 8181:8181 \
-    -v f3help-data:/data \
+ExecStartPre=-/usr/bin/podman stop f3denver-help
+ExecStartPre=-/usr/bin/podman rm   f3denver-help
+ExecStartPre=/usr/bin/podman pull  quay.io/migtools/f3denver-help:latest
+ExecStart=/usr/bin/podman run \
+    --name        f3denver-help \
+    --env-file    /opt/f3help/.env \
+    -p            127.0.0.1:8181:8181 \
+    -v            f3help-data:/data \
+    --restart     no \
     quay.io/migtools/f3denver-help:latest
 ExecStop=/usr/bin/podman stop f3denver-help
-Restart=always
-RestartSec=5
+Restart=on-failure
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target

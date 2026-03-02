@@ -1,7 +1,13 @@
+# Combined Caddyfile for 172.232.163.125
+# This file manages BOTH services — install it as /etc/caddy/Caddyfile on the server.
+# Caddy will automatically obtain and renew TLS certificates for both domains.
+
+# F3 Denver Help Desk  →  port 8181
 help.f3denverco.com {
     reverse_proxy localhost:8181
 }
 
-:80 {
-    reverse_proxy localhost:8181
+# Band of Yeti Tracker  →  port 8080
+yeti.f3denverco.com {
+    reverse_proxy localhost:8080
 }
