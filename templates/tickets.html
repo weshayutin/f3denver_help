@@ -1,42 +1,44 @@
 {{define "title"}}My Tickets — F3 Denver Help Desk{{end}}
 {{define "content"}}
 <h1>Look Up Your Tickets</h1>
-<form class="lookup-form" method="GET" action="/tickets">
+
+<div class="lookup-form">
+  <h2>Enter your F3 name to see your tickets</h2>
+  <form method="GET" action="/tickets">
     <div class="form-group">
-        <label for="f3_name">F3 Name</label>
-        <input type="text" id="f3_name" name="f3_name" value="{{.F3Name}}" placeholder="Your F3 nickname">
+      <label for="f3_name">Your F3 Name</label>
+      <input type="text"
+             id="f3_name"
+             name="f3_name"
+             value="{{.F3Name}}"
+             placeholder="e.g. Roadrunner"
+             autocomplete="off"
+             autofocus>
     </div>
-    <button type="submit" class="btn">Look Up</button>
-</form>
-{{if .F3Name}}
-{{if .Tickets}}
-<p class="ticket-count">{{len .Tickets}} ticket(s) for {{.F3Name}}</p>
-<div class="table-wrap">
-    <table class="ticket-table">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Tickets}}
-            <tr>
-                <td>#{{.ID}}</td>
-                <td>{{.TicketType}}</td>
-                <td><span class="status status-{{.Status}}">{{.Status}}</span></td>
-                <td>{{.CreatedAt}}</td>
-                <td><a href="/ticket/{{.ID}}" class="btn btn-sm">View</a></td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+    <button type="submit" class="btn">Look Up Tickets</button>
+  </form>
 </div>
-{{else}}
-<p class="no-tickets">No tickets found for {{.F3Name}}.</p>
-{{end}}
+
+{{if .F3Name}}
+  {{if .Tickets}}
+    <p class="ticket-count">Found <strong>{{len .Tickets}}</strong> ticket(s) for <strong>{{.F3Name}}</strong></p>
+    {{range .Tickets}}
+    <div class="ticket-card">
+      <div class="ticket-card-meta">
+        <div class="ticket-card-id">Ticket #{{.ID}}</div>
+        <div class="ticket-card-type">{{.TicketType}}</div>
+        <div class="ticket-card-date">Submitted {{.CreatedAt}}</div>
+      </div>
+      <div class="ticket-card-right">
+        <span class="status status-{{.Status}}">{{.Status}}</span>
+        <a href="/ticket/{{.ID}}" class="btn btn-sm">View Details</a>
+      </div>
+    </div>
+    {{end}}
+  {{else}}
+    <div class="no-tickets">
+      No tickets found for <strong>{{.F3Name}}</strong>. Double-check the spelling of your F3 name.
+    </div>
+  {{end}}
 {{end}}
 {{end}}

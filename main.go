@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -62,6 +63,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	mux.Handle("/attachments/", http.StripPrefix("/attachments/", http.FileServer(http.Dir(filepath.Join(dataDir, "attachments")))))
 	mux.HandleFunc("/", app.SubmitFormHandler)
 	mux.HandleFunc("/submit", app.SubmitTicketHandler)
 	mux.HandleFunc("/tickets", app.TicketsLookupHandler)

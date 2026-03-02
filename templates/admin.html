@@ -1,4 +1,5 @@
 {{define "title"}}Admin — F3 Denver Help Desk{{end}}
+{{define "bodyclass"}}admin-page{{end}}
 {{define "content"}}
 <h1>Admin Dashboard</h1>
 <p><a href="/admin/tips" class="btn">Edit Tips Page</a></p>
@@ -13,6 +14,7 @@
                 <th>F3 Name</th>
                 <th>AO</th>
                 <th>Description</th>
+                <th>Screenshot</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -26,6 +28,13 @@
                 <td>{{.F3Name}}</td>
                 <td>{{.AO}}</td>
                 <td class="desc-cell">{{.Description}}</td>
+                <td>
+                    {{if .AttachmentPath}}
+                    <a href="/{{.AttachmentPath}}" target="_blank" rel="noopener" title="View screenshot">
+                        <img src="/{{.AttachmentPath}}" alt="screenshot" class="attachment-thumb">
+                    </a>
+                    {{else}}&mdash;{{end}}
+                </td>
                 <td>
                     <form method="POST" action="/admin/ticket/{{.ID}}" class="admin-ticket-form">
                         <select name="status">

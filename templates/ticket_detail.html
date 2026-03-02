@@ -1,43 +1,97 @@
 {{define "title"}}Ticket #{{.Ticket.ID}} — F3 Denver Help Desk{{end}}
 {{define "content"}}
-<h1>Ticket #{{.Ticket.ID}}</h1>
-<div class="ticket-detail">
-    <dl>
-        <dt>Status</dt>
-        <dd><span class="status status-{{.Ticket.Status}}">{{.Ticket.Status}}</span></dd>
-        <dt>Type</dt>
-        <dd>{{.Ticket.TicketType}}</dd>
-        <dt>Created</dt>
-        <dd>{{.Ticket.CreatedAt}}</dd>
-        <dt>Updated</dt>
-        <dd>{{.Ticket.UpdatedAt}}</dd>
-        <dt>Hospital Name</dt>
-        <dd>{{.Ticket.HospitalName}}</dd>
-        <dt>F3 Name</dt>
-        <dd>{{.Ticket.F3Name}}</dd>
-        {{if .Ticket.AO}}
-        <dt>AO</dt>
-        <dd>{{.Ticket.AO}}</dd>
-        {{end}}
-        {{if .Ticket.EventDate}}
-        <dt>Event Date</dt>
-        <dd>{{.Ticket.EventDate}}</dd>
-        {{end}}
-        {{if .Ticket.URL}}
-        <dt>URL</dt>
-        <dd><a href="{{.Ticket.URL}}" target="_blank" rel="noopener">{{.Ticket.URL}}</a></dd>
-        {{end}}
-        <dt>Description</dt>
-        <dd class="description">{{.Ticket.Description}}</dd>
-        {{if .Ticket.AdminNotes}}
-        <dt>Admin Notes</dt>
-        <dd>{{.Ticket.AdminNotes}}</dd>
-        {{end}}
-        {{if .Ticket.ResolvedAt}}
-        <dt>Resolved</dt>
-        <dd>{{.Ticket.ResolvedAt}}</dd>
-        {{end}}
-    </dl>
+
+<div class="ticket-detail-card">
+
+  <div class="detail-header">
+    <h2>Ticket #{{.Ticket.ID}}</h2>
+    <span class="status status-{{.Ticket.Status}}">{{.Ticket.Status}}</span>
+  </div>
+
+  <dl class="detail-grid">
+
+    <div class="detail-field">
+      <dt>Request Type</dt>
+      <dd>{{.Ticket.TicketType}}</dd>
+    </div>
+
+    <div class="detail-field">
+      <dt>Submitted</dt>
+      <dd>{{.Ticket.CreatedAt}}</dd>
+    </div>
+
+    <div class="detail-field">
+      <dt>Last Updated</dt>
+      <dd>{{.Ticket.UpdatedAt}}</dd>
+    </div>
+
+    <div class="detail-field">
+      <dt>Hospital Name</dt>
+      <dd>{{.Ticket.HospitalName}}</dd>
+    </div>
+
+    <div class="detail-field">
+      <dt>F3 Name</dt>
+      <dd>{{.Ticket.F3Name}}</dd>
+    </div>
+
+    {{if .Ticket.AO}}
+    <div class="detail-field">
+      <dt>AO</dt>
+      <dd>{{.Ticket.AO}}</dd>
+    </div>
+    {{end}}
+
+    {{if .Ticket.EventDate}}
+    <div class="detail-field">
+      <dt>Event Date</dt>
+      <dd>{{.Ticket.EventDate}}</dd>
+    </div>
+    {{end}}
+
+    {{if .Ticket.URL}}
+    <div class="detail-field full-width">
+      <dt>URL</dt>
+      <dd><a href="{{.Ticket.URL}}" target="_blank" rel="noopener">{{.Ticket.URL}}</a></dd>
+    </div>
+    {{end}}
+
+    {{if .Ticket.AttachmentPath}}
+    <div class="detail-field full-width">
+      <dt>Screenshot</dt>
+      <dd>
+        <div class="attachment-wrap">
+          <a href="/{{.Ticket.AttachmentPath}}" target="_blank" rel="noopener">
+            <img src="/{{.Ticket.AttachmentPath}}" alt="Screenshot" class="attachment-img">
+          </a>
+        </div>
+      </dd>
+    </div>
+    {{end}}
+
+    <div class="detail-field full-width">
+      <dt>Description</dt>
+      <dd class="description">{{.Ticket.Description}}</dd>
+    </div>
+
+    {{if .Ticket.AdminNotes}}
+    <div class="detail-field full-width">
+      <dt>Admin Notes</dt>
+      <dd>{{.Ticket.AdminNotes}}</dd>
+    </div>
+    {{end}}
+
+    {{if .Ticket.ResolvedAt}}
+    <div class="detail-field">
+      <dt>Resolved At</dt>
+      <dd>{{.Ticket.ResolvedAt}}</dd>
+    </div>
+    {{end}}
+
+  </dl>
 </div>
-<p><a href="/tickets" class="btn">Back to My Tickets</a></p>
+
+<a href="/tickets" class="btn btn-secondary">&larr; Back to My Tickets</a>
+<a href="/" class="btn" style="margin-left:1rem;">Submit Another Ticket</a>
+
 {{end}}

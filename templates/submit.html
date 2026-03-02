@@ -1,70 +1,416 @@
 {{define "title"}}Submit a Ticket — F3 Denver Help Desk{{end}}
 {{define "content"}}
-<h1>Submit a Help Ticket</h1>
-{{if .Error}}
-<div class="alert alert-error">{{.Error}}</div>
-{{end}}
-<form class="ticket-form" method="POST" action="/submit" id="ticket-form">
-    <div class="form-group">
-        <label for="ticket_type">Request Type *</label>
-        <select name="ticket_type" id="ticket_type" required>
-            <option value="">— Select —</option>
-            <option value="preblast">Preblast</option>
-            <option value="backblast">Backblast</option>
-            <option value="yeti">Yeti / Achievement Tracking</option>
-            <option value="website">F3 Denver Website</option>
-            <option value="other">Other</option>
+<div class="wizard-container">
+
+  {{if .Error}}
+  <div class="alert alert-error">{{.Error}}</div>
+  {{end}}
+
+  <!-- Progress -->
+  <div class="wizard-progress-wrap">
+    <div class="wizard-progress-bar" id="progress-bar"></div>
+  </div>
+  <div class="wizard-step-label" id="step-label">Step 1</div>
+
+  <form id="wizard-form" method="POST" action="/submit" enctype="multipart/form-data" novalidate>
+
+    <!-- Hidden fields carry all values through to the final POST -->
+    <input type="hidden" name="ticket_type"   id="ticket_type"   value="">
+    <input type="hidden" name="hospital_name" id="hospital_name" value="">
+    <input type="hidden" name="f3_name"       id="f3_name"       value="">
+    <input type="hidden" name="ao"            id="ao"            value="">
+    <input type="hidden" name="event_date"    id="event_date"    value="">
+    <input type="hidden" name="url"           id="url"           value="">
+    <input type="hidden" name="description"   id="description"   value="">
+
+    <!-- ── Step 1: Request Type ── -->
+    <div class="wizard-step active" data-step="1" id="step-1">
+      <h2 class="wizard-question">What do you need help with?</h2>
+      <p class="wizard-hint">Choose the category that best fits your request — you can only pick one.</p>
+      <div class="type-cards" id="type-cards">
+        <div class="type-card" data-value="preblast">
+          <div class="type-card-title">Preblast</div>
+          <div class="type-card-desc">Post or fix a workout announcement</div>
+        </div>
+        <div class="type-card" data-value="backblast">
+          <div class="type-card-title">Backblast</div>
+          <div class="type-card-desc">Submit or correct a workout recap</div>
+        </div>
+        <div class="type-card" data-value="yeti">
+          <div class="type-card-title">Yeti / Achievement</div>
+          <div class="type-card-desc">Tracking issues or badge problems</div>
+        </div>
+        <div class="type-card" data-value="website">
+          <div class="type-card-title">F3 Denver Website</div>
+          <div class="type-card-desc">Broken links, wrong info, or suggestions</div>
+        </div>
+        <div class="type-card" data-value="other">
+          <div class="type-card-title">Other</div>
+          <div class="type-card-desc">Anything that doesn't fit above</div>
+        </div>
+      </div>
+      <p class="wizard-field-error" id="err-1">Please choose a category to continue.</p>
+    </div>
+
+    <!-- ── Step 2: Hospital Name ── -->
+    <div class="wizard-step" data-step="2" id="step-2">
+      <h2 class="wizard-question">What is your real name?</h2>
+      <p class="wizard-hint">Your hospital name — the name on your birth certificate.</p>
+      <div class="wizard-input-wrap">
+        <input type="text"
+               id="input-hospital_name"
+               class="wizard-input"
+               placeholder="First Last"
+               autocomplete="name"
+               enterkeyhint="next">
+      </div>
+      <p class="wizard-field-error" id="err-2">Please enter your real name to continue.</p>
+    </div>
+
+    <!-- ── Step 3: F3 Name ── -->
+    <div class="wizard-step" data-step="3" id="step-3">
+      <h2 class="wizard-question">What is your F3 name?</h2>
+      <p class="wizard-hint">Your F3 nickname — for example "Roadrunner" or "Sparky".</p>
+      <div class="wizard-input-wrap">
+        <input type="text"
+               id="input-f3_name"
+               class="wizard-input"
+               placeholder="Your F3 name"
+               autocomplete="off"
+               enterkeyhint="next">
+      </div>
+      <p class="wizard-field-error" id="err-3">Please enter your F3 name to continue.</p>
+    </div>
+
+    <!-- ── Step 4: AO (preblast / backblast / yeti) ── -->
+    <div class="wizard-step" data-step="4" id="step-4">
+      <h2 class="wizard-question">Which AO is this for?</h2>
+      <p class="wizard-hint">Select the workout location this request is about.</p>
+      <div class="wizard-input-wrap">
+        <select id="input-ao" class="wizard-select">
+          <option value="">— Select an AO —</option>
+          {{range .AOs}}
+          <option value="{{.}}">{{.}}</option>
+          {{end}}
         </select>
+      </div>
+      <p class="wizard-field-error" id="err-4">Please select an AO to continue.</p>
     </div>
-    <div class="form-group">
-        <label for="hospital_name">Hospital Name *</label>
-        <input type="text" id="hospital_name" name="hospital_name" required placeholder="Your real name">
+
+    <!-- ── Step 5: Event Date (preblast / backblast) ── -->
+    <div class="wizard-step" data-step="5" id="step-5">
+      <h2 class="wizard-question">What is the event date?</h2>
+      <p class="wizard-hint">The date of the workout or event you're asking about.</p>
+      <div class="wizard-input-wrap">
+        <input type="date"
+               id="input-event_date"
+               class="wizard-input"
+               enterkeyhint="next">
+      </div>
+      <p class="wizard-field-error" id="err-5">Please choose an event date to continue.</p>
     </div>
-    <div class="form-group">
-        <label for="f3_name">F3 Name *</label>
-        <input type="text" id="f3_name" name="f3_name" required placeholder="Your F3 nickname">
+
+    <!-- ── Step 6: URL (website only) ── -->
+    <div class="wizard-step" data-step="6" id="step-6">
+      <h2 class="wizard-question">What is the page URL?</h2>
+      <p class="wizard-hint">Paste the full link to the page that needs attention.</p>
+      <div class="wizard-input-wrap">
+        <input type="url"
+               id="input-url"
+               class="wizard-input"
+               placeholder="https://f3denver.com/..."
+               autocomplete="url"
+               enterkeyhint="next">
+      </div>
+      <p class="wizard-field-error" id="err-6">Please enter a valid URL (starting with https://) to continue.</p>
     </div>
-    <div class="form-group field-ao">
-        <label for="ao">AO *</label>
-        <select name="ao" id="ao">
-            <option value="">— Select AO —</option>
-            {{range .AOs}}
-            <option value="{{.}}">{{.}}</option>
-            {{end}}
-        </select>
+
+    <!-- ── Step 7: Description ── -->
+    <div class="wizard-step" data-step="7" id="step-7">
+      <h2 class="wizard-question">Describe your request</h2>
+      <p class="wizard-hint">The more detail you give, the faster we can help. What happened? What needs to be fixed?</p>
+      <div class="wizard-input-wrap">
+        <textarea id="input-description"
+                  class="wizard-textarea"
+                  placeholder="Describe the issue or what you need done..."></textarea>
+      </div>
+      <p class="wizard-field-error" id="err-7">Please describe your request before continuing.</p>
     </div>
-    <div class="form-group field-event-date">
-        <label for="event_date">Event Date *</label>
-        <input type="date" id="event_date" name="event_date">
+
+    <!-- ── Step 8: Screenshot (all ticket types, optional) ── -->
+    <div class="wizard-step" data-step="8" id="step-8">
+      <h2 class="wizard-question">Got a screenshot?</h2>
+      <p class="wizard-hint">A picture is worth a thousand words. Upload one if you have it — JPG or PNG, max 15 MB. This step is optional.</p>
+
+      <label class="screenshot-dropzone" id="screenshot-dropzone" for="screenshot">
+        <span class="screenshot-dropzone-text" id="screenshot-dropzone-text">
+          Click to choose a file &mdash; or drag &amp; drop it here
+        </span>
+        <img id="screenshot-preview" class="screenshot-preview" src="" alt="Preview" style="display:none">
+        <input type="file"
+               name="screenshot"
+               id="screenshot"
+               accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+               style="display:none">
+      </label>
+      <p class="wizard-field-error" id="err-screenshot" style="display:none"></p>
     </div>
-    <div class="form-group field-url">
-        <label for="url">URL *</label>
-        <input type="url" id="url" name="url" placeholder="https://f3denver.com/...">
+
+    <!-- ── Step 9: Review & Submit ── -->
+    <div class="wizard-step" data-step="9" id="step-9">
+      <h2 class="wizard-question">Ready to submit?</h2>
+      <p class="wizard-hint">Review your request below — you can go back to make changes.</p>
+      <div class="wizard-review-card" id="wizard-review">
+        <!-- Populated by JS -->
+      </div>
     </div>
-    <div class="form-group">
-        <label for="description">Description *</label>
-        <textarea id="description" name="description" required rows="4" placeholder="Describe the issue or request..."></textarea>
+
+    <!-- Navigation -->
+    <div class="wizard-nav" id="wizard-nav">
+      <button type="button" class="btn-wizard-back" id="btn-back" style="display:none">
+        &larr; Back
+      </button>
+      <button type="button" class="btn-wizard-next" id="btn-next">
+        Next &rarr;
+      </button>
+      <button type="submit" class="btn-wizard-submit" id="btn-submit" style="display:none">
+        Submit Ticket
+      </button>
     </div>
-    <button type="submit" class="btn">Submit Ticket</button>
-</form>
+
+  </form>
+</div>
+
 <script>
-(function() {
-    var form = document.getElementById('ticket-form');
-    var typeSelect = document.getElementById('ticket_type');
-    var aoGroup = document.querySelector('.field-ao');
-    var eventGroup = document.querySelector('.field-event-date');
-    var urlGroup = document.querySelector('.field-url');
-    function toggle() {
-        var t = (typeSelect.value || '').toLowerCase();
-        aoGroup.style.display = (t === 'preblast' || t === 'backblast' || t === 'yeti') ? 'block' : 'none';
-        eventGroup.style.display = (t === 'preblast' || t === 'backblast') ? 'block' : 'none';
-        urlGroup.style.display = (t === 'website') ? 'block' : 'none';
-        document.getElementById('ao').required = (t === 'preblast' || t === 'backblast' || t === 'yeti');
-        document.getElementById('event_date').required = (t === 'preblast' || t === 'backblast');
-        document.getElementById('url').required = (t === 'website');
+(function () {
+  'use strict';
+
+  // ── Step sequence ──────────────────────────────────────────────
+  var ticketType = '';
+
+  function activeSteps() {
+    var steps = [1, 2, 3];
+    var t = ticketType;
+    if (t === 'preblast' || t === 'backblast' || t === 'yeti') steps.push(4);
+    if (t === 'preblast' || t === 'backblast') steps.push(5);
+    if (t === 'website') steps.push(6);
+    steps.push(7); // description — always
+    steps.push(8); // screenshot  — always (optional)
+    steps.push(9); // review      — always
+    return steps;
+  }
+
+  var currentIdx = 0;
+
+  // ── Show a step ───────────────────────────────────────────────
+  function showStep(stepNum) {
+    document.querySelectorAll('.wizard-step').forEach(function (el) {
+      el.classList.remove('active');
+    });
+    var el = document.getElementById('step-' + stepNum);
+    if (el) el.classList.add('active');
+
+    var steps = activeSteps();
+    var pct = steps.length > 1 ? Math.round((currentIdx / (steps.length - 1)) * 100) : 100;
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('step-label').textContent =
+      'Step ' + (currentIdx + 1) + ' of ' + steps.length;
+
+    var isReview = (stepNum === 9);
+    document.getElementById('btn-back').style.display   = currentIdx > 0      ? 'inline-block' : 'none';
+    document.getElementById('btn-next').style.display   = isReview ? 'none'   : 'inline-block';
+    document.getElementById('btn-submit').style.display = isReview ? 'inline-block' : 'none';
+
+    if (isReview) populateReview();
+
+    // Auto-focus first interactive element
+    setTimeout(function () {
+      var input = el && el.querySelector('input:not([type=hidden]), select, textarea');
+      if (input) input.focus();
+    }, 60);
+  }
+
+  // ── Validate current step ─────────────────────────────────────
+  function validate() {
+    var stepNum = activeSteps()[currentIdx];
+    clearErrors();
+    if (stepNum === 1 && !ticketType)                                          { showErr('err-1'); return false; }
+    if (stepNum === 2 && !document.getElementById('input-hospital_name').value.trim()) { showErr('err-2'); return false; }
+    if (stepNum === 3 && !document.getElementById('input-f3_name').value.trim())       { showErr('err-3'); return false; }
+    if (stepNum === 4 && !document.getElementById('input-ao').value)           { showErr('err-4'); return false; }
+    if (stepNum === 5 && !document.getElementById('input-event_date').value)   { showErr('err-5'); return false; }
+    if (stepNum === 6) {
+      var u = document.getElementById('input-url').value.trim();
+      if (!u || !/^https?:\/\//i.test(u)) { showErr('err-6'); return false; }
     }
-    typeSelect.addEventListener('change', toggle);
-    toggle();
+    if (stepNum === 7 && !document.getElementById('input-description').value.trim()) { showErr('err-7'); return false; }
+    // Step 8 (screenshot) is always optional — no validation needed.
+    return true;
+  }
+
+  function showErr(id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'block';
+    var step = document.querySelector('.wizard-step.active');
+    if (step) {
+      step.classList.add('shake');
+      setTimeout(function () { step.classList.remove('shake'); }, 500);
+    }
+  }
+
+  function clearErrors() {
+    document.querySelectorAll('.wizard-field-error').forEach(function (el) {
+      el.style.display = 'none';
+    });
+  }
+
+  // ── Sync hidden fields before submit ──────────────────────────
+  function syncHiddenFields() {
+    var steps = activeSteps();
+    document.getElementById('ticket_type').value   = ticketType;
+    document.getElementById('hospital_name').value = document.getElementById('input-hospital_name').value.trim();
+    document.getElementById('f3_name').value       = document.getElementById('input-f3_name').value.trim();
+    document.getElementById('ao').value            = steps.indexOf(4) !== -1 ? document.getElementById('input-ao').value : '';
+    document.getElementById('event_date').value    = steps.indexOf(5) !== -1 ? document.getElementById('input-event_date').value : '';
+    document.getElementById('url').value           = steps.indexOf(6) !== -1 ? document.getElementById('input-url').value.trim() : '';
+    document.getElementById('description').value   = document.getElementById('input-description').value.trim();
+  }
+
+  // ── Navigation ────────────────────────────────────────────────
+  function goNext() {
+    if (!validate()) return;
+    var steps = activeSteps();
+    if (currentIdx < steps.length - 1) {
+      currentIdx++;
+      showStep(steps[currentIdx]);
+    }
+  }
+
+  function goBack() {
+    if (currentIdx > 0) {
+      currentIdx--;
+      showStep(activeSteps()[currentIdx]);
+    }
+  }
+
+  // ── Review summary ────────────────────────────────────────────
+  function populateReview() {
+    var steps = activeSteps();
+    var typeLabels = {
+      preblast: 'Preblast', backblast: 'Backblast',
+      yeti: 'Yeti / Achievement Tracking',
+      website: 'F3 Denver Website', other: 'Other'
+    };
+
+    var rows = [
+      { label: 'Request Type', value: typeLabels[ticketType] || ticketType },
+      { label: 'Real Name',    value: document.getElementById('input-hospital_name').value.trim() },
+      { label: 'F3 Name',      value: document.getElementById('input-f3_name').value.trim() }
+    ];
+    if (steps.indexOf(4) !== -1) rows.push({ label: 'AO',         value: document.getElementById('input-ao').value });
+    if (steps.indexOf(5) !== -1) rows.push({ label: 'Event Date', value: document.getElementById('input-event_date').value });
+    if (steps.indexOf(6) !== -1) rows.push({ label: 'URL',        value: document.getElementById('input-url').value.trim() });
+    rows.push({ label: 'Description', value: document.getElementById('input-description').value.trim() });
+
+    // Show screenshot filename if one was chosen
+    var screenshotFile = document.getElementById('screenshot').files[0];
+    rows.push({
+      label: 'Screenshot',
+      value: screenshotFile ? screenshotFile.name : 'None (skipped)'
+    });
+
+    document.getElementById('wizard-review').innerHTML = rows.map(function (r) {
+      return '<div class="review-row">' +
+        '<div class="review-label">' + esc(r.label) + '</div>' +
+        '<div class="review-value">'  + esc(r.value) + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Type card selection ───────────────────────────────────────
+  document.querySelectorAll('.type-card').forEach(function (card) {
+    card.addEventListener('click', function () {
+      document.querySelectorAll('.type-card').forEach(function (c) { c.classList.remove('selected'); });
+      card.classList.add('selected');
+      ticketType = card.getAttribute('data-value');
+      clearErrors();
+      setTimeout(goNext, 260);
+    });
+  });
+
+  document.getElementById('btn-next').addEventListener('click', goNext);
+  document.getElementById('btn-back').addEventListener('click', goBack);
+
+  document.getElementById('wizard-form').addEventListener('submit', function (e) {
+    syncHiddenFields();
+    if (!ticketType) { e.preventDefault(); }
+  });
+
+  // Enter key advances (except in textarea and the review step)
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    var step = activeSteps()[currentIdx];
+    if (step === 7) return; // textarea — allow newlines
+    if (step === 9) return; // review   — let submit button handle it
+    e.preventDefault();
+    goNext();
+  });
+
+  // ── Screenshot drag-and-drop / preview ───────────────────────
+  var screenshotInput = document.getElementById('screenshot');
+  var dropzone        = document.getElementById('screenshot-dropzone');
+  var dropText        = document.getElementById('screenshot-dropzone-text');
+  var preview         = document.getElementById('screenshot-preview');
+  var screenshotErr   = document.getElementById('err-screenshot');
+
+  function handleScreenshotFile(file) {
+    screenshotErr.style.display = 'none';
+    if (!file) return;
+    if (file.type !== 'image/jpeg' && file.type !== 'image/png') {
+      screenshotErr.textContent = 'Only JPG and PNG files are allowed.';
+      screenshotErr.style.display = 'block';
+      screenshotInput.value = '';
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      screenshotErr.textContent = 'File is too large. Maximum size is 15 MB.';
+      screenshotErr.style.display = 'block';
+      screenshotInput.value = '';
+      return;
+    }
+    dropzone.classList.add('has-file');
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      preview.src = e.target.result;
+      preview.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+    dropText.textContent = file.name;
+    dropText.style.display = 'block';
+  }
+
+  screenshotInput.addEventListener('change', function () {
+    handleScreenshotFile(this.files[0] || null);
+  });
+
+  dropzone.addEventListener('dragover',  function (e) { e.preventDefault(); dropzone.classList.add('drag-over'); });
+  dropzone.addEventListener('dragleave', function ()  { dropzone.classList.remove('drag-over'); });
+  dropzone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    var file = e.dataTransfer && e.dataTransfer.files[0];
+    if (file) {
+      try { var dt = new DataTransfer(); dt.items.add(file); screenshotInput.files = dt.files; } catch (ex) {}
+      handleScreenshotFile(file);
+    }
+  });
+
+  // ── Init ─────────────────────────────────────────────────────
+  showStep(activeSteps()[0]);
 })();
 </script>
 {{end}}

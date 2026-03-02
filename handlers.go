@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS tickets (
 	url TEXT,
 	description TEXT NOT NULL,
 	admin_notes TEXT DEFAULT '',
+	attachment_path TEXT DEFAULT '',
 	resolved_at DATETIME
 );
 
@@ -43,10 +45,10 @@ CREATE INDEX IF NOT EXISTS idx_tickets_created_at ON tickets(created_at);
 `
 
 type App struct {
-	DB             *sql.DB
-	DataDir        string
-	AdminPassword  string
-	templatesDir   string
+	DB            *sql.DB
+	DataDir       string
+	AdminPassword string
+	templatesDir  string
 }
 
 func NewApp(dataDir, adminPassword string) (*App, error) {
@@ -62,6 +64,9 @@ func NewApp(dataDir, adminPassword string) (*App, error) {
 		db.Close()
 		return nil, err
 	}
+	// Migration: add attachment_path column if it doesn't exist yet.
+	_, _ = db.Exec(`ALTER TABLE tickets ADD COLUMN attachment_path TEXT DEFAULT ''`)
+
 	log.Println("SQLite initialized at", dbPath)
 	templatesDir := getEnv("TEMPLATES_DIR", "templates")
 	return &App{
@@ -81,19 +86,20 @@ func (app *App) Close() error {
 
 // Ticket represents a help desk ticket.
 type Ticket struct {
-	ID           int64
-	CreatedAt    string
-	UpdatedAt    string
-	Status       string
-	TicketType   string
-	HospitalName string
-	F3Name       string
-	AO          string
-	EventDate    string
-	URL         string
-	Description  string
-	AdminNotes   string
-	ResolvedAt   *string
+	ID             int64
+	CreatedAt      string
+	UpdatedAt      string
+	Status         string
+	TicketType     string
+	HospitalName   string
+	F3Name         string
+	AO             string
+	EventDate      string
+	URL            string
+	Description    string
+	AdminNotes     string
+	AttachmentPath string
+	ResolvedAt     *string
 }
 
 func (app *App) SubmitFormHandler(w http.ResponseWriter, r *http.Request) {
@@ -110,44 +116,58 @@ func (app *App) SubmitTicketHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
+
+	// Parse up to 15 MB (screenshot may be several MB).
+	if err := r.ParseMultipartForm(15 << 20); err != nil {
+		// Fall back to plain form if no file was attached.
+		if err2 := r.ParseForm(); err2 != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+	}
+
 	hospitalName := strings.TrimSpace(r.FormValue("hospital_name"))
 	f3Name := strings.TrimSpace(r.FormValue("f3_name"))
 	ticketType := strings.TrimSpace(r.FormValue("ticket_type"))
 	ao := strings.TrimSpace(r.FormValue("ao"))
 	eventDate := strings.TrimSpace(r.FormValue("event_date"))
-	url := strings.TrimSpace(r.FormValue("url"))
+	ticketURL := strings.TrimSpace(r.FormValue("url"))
 	description := strings.TrimSpace(r.FormValue("description"))
 
+	renderErr := func(msg string) {
+		app.renderTemplate(w, "submit.html", map[string]interface{}{"Error": msg, "AOs": AOsList})
+	}
+
 	if hospitalName == "" || f3Name == "" || description == "" {
-		app.renderTemplate(w, "submit.html", map[string]interface{}{"Error": "Hospital name, F3 name, and description are required.", "AOs": AOsList})
+		renderErr("Hospital name, F3 name, and description are required.")
 		return
 	}
 	switch ticketType {
 	case "preblast", "backblast":
 		if ao == "" || eventDate == "" {
-			app.renderTemplate(w, "submit.html", map[string]interface{}{"Error": "AO and event date are required for preblast/backblast.", "AOs": AOsList})
+			renderErr("AO and event date are required for preblast/backblast.")
 			return
 		}
 	case "yeti":
 		if ao == "" {
-			app.renderTemplate(w, "submit.html", map[string]interface{}{"Error": "AO is required for Yeti tracking.", "AOs": AOsList})
+			renderErr("AO is required for Yeti tracking.")
 			return
 		}
 	case "website":
-		if url == "" {
-			app.renderTemplate(w, "submit.html", map[string]interface{}{"Error": "URL is required for website issues.", "AOs": AOsList})
+		if ticketURL == "" {
+			renderErr("URL is required for website issues.")
 			return
 		}
 	case "other":
 		// no extra required
 	default:
-		app.renderTemplate(w, "submit.html", map[string]interface{}{"Error": "Invalid ticket type.", "AOs": AOsList})
+		renderErr("Invalid ticket type.")
 		return
 	}
 
 	res, err := app.DB.Exec(
 		`INSERT INTO tickets (ticket_type, hospital_name, f3_name, ao, event_date, url, description) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		ticketType, hospitalName, f3Name, nullEmpty(ao), nullEmpty(eventDate), nullEmpty(url), description,
+		ticketType, hospitalName, f3Name, nullEmpty(ao), nullEmpty(eventDate), nullEmpty(ticketURL), description,
 	)
 	if err != nil {
 		log.Printf("insert ticket: %v", err)
@@ -155,7 +175,87 @@ func (app *App) SubmitTicketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := res.LastInsertId()
+
+	// Handle optional screenshot upload (all ticket types).
+	if attachPath, err := app.saveScreenshot(r, id); err != nil {
+		log.Printf("save screenshot for ticket %d: %v", id, err)
+		// Non-fatal: ticket is saved, just without the image.
+	} else if attachPath != "" {
+		if _, err := app.DB.Exec(`UPDATE tickets SET attachment_path = ? WHERE id = ?`, attachPath, id); err != nil {
+			log.Printf("update attachment_path for ticket %d: %v", id, err)
+		}
+	}
+
 	http.Redirect(w, r, "/ticket/"+formatID(id), http.StatusSeeOther)
+}
+
+// saveScreenshot validates and writes the uploaded file, returning the
+// relative path ("attachments/{id}/screenshot.ext") or "" if no file.
+func (app *App) saveScreenshot(r *http.Request, ticketID int64) (string, error) {
+	file, header, err := r.FormFile("screenshot")
+	if err != nil {
+		// No file uploaded — that's fine.
+		return "", nil
+	}
+	defer file.Close()
+
+	// Validate MIME type by reading the first 512 bytes.
+	buf := make([]byte, 512)
+	n, err := file.Read(buf)
+	if err != nil && err != io.EOF {
+		return "", fmt.Errorf("read header: %w", err)
+	}
+	mime := http.DetectContentType(buf[:n])
+	if mime != "image/jpeg" && mime != "image/png" {
+		return "", fmt.Errorf("unsupported file type: %s (only JPEG and PNG allowed)", mime)
+	}
+
+	// Determine extension from MIME (ignore whatever the browser sent).
+	ext := ".jpg"
+	if mime == "image/png" {
+		ext = ".png"
+	}
+
+	// Create the directory.
+	dir := filepath.Join(app.DataDir, "attachments", formatID(ticketID))
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("mkdir: %w", err)
+	}
+
+	_ = header // filename not used; we use the MIME-derived extension
+	dest := filepath.Join(dir, "screenshot"+ext)
+	out, err := os.Create(dest)
+	if err != nil {
+		return "", fmt.Errorf("create file: %w", err)
+	}
+	defer out.Close()
+
+	// Write the buffered bytes first, then the rest.
+	if _, err := out.Write(buf[:n]); err != nil {
+		return "", fmt.Errorf("write buf: %w", err)
+	}
+	if _, err := io.Copy(out, file); err != nil {
+		return "", fmt.Errorf("write rest: %w", err)
+	}
+
+	return filepath.Join("attachments", formatID(ticketID), "screenshot"+ext), nil
+}
+
+// deleteAttachment removes the image file and clears attachment_path in the DB.
+func (app *App) deleteAttachment(ticketID int64, attachPath string) {
+	if attachPath == "" {
+		return
+	}
+	fullPath := filepath.Join(app.DataDir, attachPath)
+	if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("delete attachment %s: %v", fullPath, err)
+	}
+	// Also try to remove the directory if empty.
+	dir := filepath.Dir(fullPath)
+	_ = os.Remove(dir) // silently fails if not empty
+	if _, err := app.DB.Exec(`UPDATE tickets SET attachment_path = '' WHERE id = ?`, ticketID); err != nil {
+		log.Printf("clear attachment_path for ticket %d: %v", ticketID, err)
+	}
 }
 
 func (app *App) TicketsLookupHandler(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +265,7 @@ func (app *App) TicketsLookupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := app.DB.Query(
-		`SELECT id, created_at, updated_at, status, ticket_type, hospital_name, f3_name, ao, event_date, url, description, admin_notes, resolved_at FROM tickets WHERE f3_name = ? ORDER BY created_at DESC`,
+		`SELECT id, created_at, updated_at, status, ticket_type, hospital_name, f3_name, ao, event_date, url, description, admin_notes, attachment_path, resolved_at FROM tickets WHERE f3_name = ? ORDER BY created_at DESC`,
 		f3Name,
 	)
 	if err != nil {
@@ -177,15 +277,16 @@ func (app *App) TicketsLookupHandler(w http.ResponseWriter, r *http.Request) {
 	var tickets []Ticket
 	for rows.Next() {
 		var t Ticket
-		var ao, eventDate, url, adminNotes sql.NullString
+		var ao, eventDate, url, adminNotes, attachPath sql.NullString
 		var resolvedAt sql.NullString
-		if err := rows.Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt, &t.Status, &t.TicketType, &t.HospitalName, &t.F3Name, &ao, &eventDate, &url, &t.Description, &adminNotes, &resolvedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt, &t.Status, &t.TicketType, &t.HospitalName, &t.F3Name, &ao, &eventDate, &url, &t.Description, &adminNotes, &attachPath, &resolvedAt); err != nil {
 			continue
 		}
 		t.AO = ao.String
 		t.EventDate = eventDate.String
 		t.URL = url.String
 		t.AdminNotes = adminNotes.String
+		t.AttachmentPath = attachPath.String
 		if resolvedAt.Valid {
 			t.ResolvedAt = &resolvedAt.String
 		}
@@ -206,12 +307,12 @@ func (app *App) TicketDetailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var t Ticket
-	var ao, eventDate, url, adminNotes sql.NullString
+	var ao, eventDate, url, adminNotes, attachPath sql.NullString
 	var resolvedAt sql.NullString
 	err := app.DB.QueryRow(
-		`SELECT id, created_at, updated_at, status, ticket_type, hospital_name, f3_name, ao, event_date, url, description, admin_notes, resolved_at FROM tickets WHERE id = ?`,
+		`SELECT id, created_at, updated_at, status, ticket_type, hospital_name, f3_name, ao, event_date, url, description, admin_notes, attachment_path, resolved_at FROM tickets WHERE id = ?`,
 		id,
-	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt, &t.Status, &t.TicketType, &t.HospitalName, &t.F3Name, &ao, &eventDate, &url, &t.Description, &adminNotes, &resolvedAt)
+	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt, &t.Status, &t.TicketType, &t.HospitalName, &t.F3Name, &ao, &eventDate, &url, &t.Description, &adminNotes, &attachPath, &resolvedAt)
 	if err == sql.ErrNoRows {
 		http.NotFound(w, r)
 		return
@@ -225,6 +326,7 @@ func (app *App) TicketDetailHandler(w http.ResponseWriter, r *http.Request) {
 	t.EventDate = eventDate.String
 	t.URL = url.String
 	t.AdminNotes = adminNotes.String
+	t.AttachmentPath = attachPath.String
 	if resolvedAt.Valid {
 		t.ResolvedAt = &resolvedAt.String
 	}
@@ -253,7 +355,7 @@ func (app *App) AdminDashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := app.DB.Query(
-		`SELECT id, created_at, updated_at, status, ticket_type, hospital_name, f3_name, ao, event_date, url, description, admin_notes, resolved_at FROM tickets ORDER BY created_at DESC`,
+		`SELECT id, created_at, updated_at, status, ticket_type, hospital_name, f3_name, ao, event_date, url, description, admin_notes, attachment_path, resolved_at FROM tickets ORDER BY created_at DESC`,
 	)
 	if err != nil {
 		log.Printf("admin list tickets: %v", err)
@@ -264,15 +366,16 @@ func (app *App) AdminDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	var tickets []Ticket
 	for rows.Next() {
 		var t Ticket
-		var ao, eventDate, url, adminNotes sql.NullString
+		var ao, eventDate, url, adminNotes, attachPath sql.NullString
 		var resolvedAt sql.NullString
-		if err := rows.Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt, &t.Status, &t.TicketType, &t.HospitalName, &t.F3Name, &ao, &eventDate, &url, &t.Description, &adminNotes, &resolvedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt, &t.Status, &t.TicketType, &t.HospitalName, &t.F3Name, &ao, &eventDate, &url, &t.Description, &adminNotes, &attachPath, &resolvedAt); err != nil {
 			continue
 		}
 		t.AO = ao.String
 		t.EventDate = eventDate.String
 		t.URL = url.String
 		t.AdminNotes = adminNotes.String
+		t.AttachmentPath = attachPath.String
 		if resolvedAt.Valid {
 			t.ResolvedAt = &resolvedAt.String
 		}
@@ -314,6 +417,7 @@ func (app *App) AdminUpdateTicketHandler(w http.ResponseWriter, r *http.Request)
 		http.NotFound(w, r)
 		return
 	}
+
 	status := r.FormValue("status")
 	adminNotes := r.FormValue("admin_notes")
 	if status != "" {
@@ -322,13 +426,17 @@ func (app *App) AdminUpdateTicketHandler(w http.ResponseWriter, r *http.Request)
 			status = "open"
 		}
 	}
-	var resolvedAt interface{}
+
+	// If resolving or closing, delete any attachment for this ticket.
 	if status == "resolved" || status == "closed" {
-		resolvedAt = "CURRENT_TIMESTAMP"
-	} else {
-		resolvedAt = nil
+		var attachPath sql.NullString
+		if err := app.DB.QueryRow(`SELECT attachment_path FROM tickets WHERE id = ?`, id).Scan(&attachPath); err == nil {
+			app.deleteAttachment(id, attachPath.String)
+		}
 	}
-	if status != "" && resolvedAt != nil {
+
+	resolving := status == "resolved" || status == "closed"
+	if status != "" && resolving {
 		_, err := app.DB.Exec(`UPDATE tickets SET status = ?, admin_notes = ?, resolved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, status, adminNotes, id)
 		if err != nil {
 			log.Printf("update ticket: %v", err)
@@ -470,4 +578,3 @@ func (app *App) renderTemplate(w http.ResponseWriter, name string, data interfac
 		log.Printf("template execute %s: %v", name, err)
 	}
 }
-
