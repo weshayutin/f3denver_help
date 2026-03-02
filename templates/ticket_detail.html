@@ -91,7 +91,15 @@
   </dl>
 </div>
 
-<a href="/tickets" class="btn btn-secondary">&larr; Back to My Tickets</a>
-<a href="/" class="btn" style="margin-left:1rem;">Submit Another Ticket</a>
+<div class="ticket-actions">
+  <a href="/tickets" class="btn btn-secondary">&larr; Back to My Tickets</a>
+  <a href="/" class="btn btn-secondary">Submit Another Ticket</a>
+  {{if .CanClose}}
+  <form method="POST" action="/ticket/{{.Ticket.ID}}/close" style="display:inline"
+        onsubmit="return confirm('Close this ticket? This cannot be undone.')">
+    <button type="submit" class="btn btn-close-ticket">Close This Ticket</button>
+  </form>
+  {{end}}
+</div>
 
 {{end}}

@@ -64,16 +64,20 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	mux.Handle("/attachments/", http.StripPrefix("/attachments/", http.FileServer(http.Dir(filepath.Join(dataDir, "attachments")))))
+
+	// Public routes
 	mux.HandleFunc("/", app.SubmitFormHandler)
 	mux.HandleFunc("/submit", app.SubmitTicketHandler)
 	mux.HandleFunc("/tickets", app.TicketsLookupHandler)
-	mux.HandleFunc("/ticket/", app.TicketDetailHandler)
+	mux.HandleFunc("/ticket/", app.TicketDetailHandler) // also handles /ticket/{id}/close
 	mux.HandleFunc("/tips", app.TipsPageHandler)
-	mux.HandleFunc("/admin", app.AdminDashboardHandler)
-	mux.HandleFunc("/admin/login", app.AdminLoginHandler)
-	mux.HandleFunc("/admin/ticket/", app.AdminUpdateTicketHandler)
-	mux.HandleFunc("/admin/tips", app.AdminTipsHandler)
 	mux.HandleFunc("/healthz", app.HealthHandler)
+
+	// Admin routes — protected by HTTP Basic Auth
+	mux.HandleFunc("/admin/logout", app.AdminLogoutHandler) // always 401 — clears cached creds
+	mux.HandleFunc("/admin", app.requireAdmin(app.AdminDashboardHandler))
+	mux.HandleFunc("/admin/ticket/", app.requireAdmin(app.AdminUpdateTicketHandler))
+	mux.HandleFunc("/admin/tips", app.requireAdmin(app.AdminTipsHandler))
 
 	addr := ":" + serverPort
 	log.Printf("server listening on http://localhost%s", addr)

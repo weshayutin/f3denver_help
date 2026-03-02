@@ -1,8 +1,24 @@
 {{define "title"}}Admin — F3 Denver Help Desk{{end}}
 {{define "bodyclass"}}admin-page{{end}}
 {{define "content"}}
-<h1>Admin Dashboard</h1>
-<p><a href="/admin/tips" class="btn">Edit Tips Page</a></p>
+<div class="admin-topbar">
+  <h1>Admin Dashboard</h1>
+  <div class="admin-topbar-actions">
+    <a href="/admin/tips" class="btn btn-secondary">Edit Tips Page</a>
+    <button class="btn btn-logout" onclick="adminLogout()">Log Out</button>
+  </div>
+</div>
+<script>
+function adminLogout() {
+  // Overwrite the browser's cached Basic Auth credentials with a
+  // deliberately wrong value, then redirect home.
+  var x = new XMLHttpRequest();
+  x.open('GET', '/admin/logout', true, '__logout__', '__logout__');
+  x.onloadend = function() { window.location.href = '/'; };
+  x.onerror   = function() { window.location.href = '/'; };
+  x.send();
+}
+</script>
 <div class="table-wrap">
     <table class="ticket-table admin-table">
         <thead>

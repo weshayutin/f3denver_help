@@ -1,10 +1,8 @@
 package main
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"html/template"
 	"io"
@@ -84,6 +82,21 @@ func (app *App) Close() error {
 	return nil
 }
 
+// ── HTTP Basic Auth middleware ──────────────────────────────────────────────
+// All /admin routes are wrapped with this. Username is ignored; only the
+// password is checked. The browser shows its built-in credential dialog.
+func (app *App) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, password, ok := r.BasicAuth()
+		if !ok || subtle.ConstantTimeCompare([]byte(password), []byte(app.AdminPassword)) != 1 {
+			w.Header().Set("WWW-Authenticate", `Basic realm="F3 Denver Admin"`)
+			http.Error(w, "Admin access required — enter your admin password.", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
 // Ticket represents a help desk ticket.
 type Ticket struct {
 	ID             int64
@@ -102,13 +115,17 @@ type Ticket struct {
 	ResolvedAt     *string
 }
 
+// canClose returns true when a ticket is in a state the user is allowed to close.
+func canClose(status string) bool {
+	return status == "open" || status == "in_progress"
+}
+
 func (app *App) SubmitFormHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-	data := map[string]interface{}{"AOs": AOsList}
-	app.renderTemplate(w, "submit.html", data)
+	app.renderTemplate(w, "submit.html", map[string]interface{}{"AOs": AOsList})
 }
 
 func (app *App) SubmitTicketHandler(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +136,6 @@ func (app *App) SubmitTicketHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Parse up to 15 MB (screenshot may be several MB).
 	if err := r.ParseMultipartForm(15 << 20); err != nil {
-		// Fall back to plain form if no file was attached.
 		if err2 := r.ParseForm(); err2 != nil {
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return
@@ -179,7 +195,6 @@ func (app *App) SubmitTicketHandler(w http.ResponseWriter, r *http.Request) {
 	// Handle optional screenshot upload (all ticket types).
 	if attachPath, err := app.saveScreenshot(r, id); err != nil {
 		log.Printf("save screenshot for ticket %d: %v", id, err)
-		// Non-fatal: ticket is saved, just without the image.
 	} else if attachPath != "" {
 		if _, err := app.DB.Exec(`UPDATE tickets SET attachment_path = ? WHERE id = ?`, attachPath, id); err != nil {
 			log.Printf("update attachment_path for ticket %d: %v", id, err)
@@ -189,17 +204,15 @@ func (app *App) SubmitTicketHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/ticket/"+formatID(id), http.StatusSeeOther)
 }
 
-// saveScreenshot validates and writes the uploaded file, returning the
-// relative path ("attachments/{id}/screenshot.ext") or "" if no file.
+// saveScreenshot validates and writes the uploaded file.
+// Returns the relative path ("attachments/{id}/screenshot.ext") or "" if no file.
 func (app *App) saveScreenshot(r *http.Request, ticketID int64) (string, error) {
 	file, header, err := r.FormFile("screenshot")
 	if err != nil {
-		// No file uploaded — that's fine.
-		return "", nil
+		return "", nil // no file uploaded
 	}
 	defer file.Close()
 
-	// Validate MIME type by reading the first 512 bytes.
 	buf := make([]byte, 512)
 	n, err := file.Read(buf)
 	if err != nil && err != io.EOF {
@@ -210,19 +223,17 @@ func (app *App) saveScreenshot(r *http.Request, ticketID int64) (string, error) 
 		return "", fmt.Errorf("unsupported file type: %s (only JPEG and PNG allowed)", mime)
 	}
 
-	// Determine extension from MIME (ignore whatever the browser sent).
 	ext := ".jpg"
 	if mime == "image/png" {
 		ext = ".png"
 	}
 
-	// Create the directory.
 	dir := filepath.Join(app.DataDir, "attachments", formatID(ticketID))
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("mkdir: %w", err)
 	}
 
-	_ = header // filename not used; we use the MIME-derived extension
+	_ = header
 	dest := filepath.Join(dir, "screenshot"+ext)
 	out, err := os.Create(dest)
 	if err != nil {
@@ -230,7 +241,6 @@ func (app *App) saveScreenshot(r *http.Request, ticketID int64) (string, error) 
 	}
 	defer out.Close()
 
-	// Write the buffered bytes first, then the rest.
 	if _, err := out.Write(buf[:n]); err != nil {
 		return "", fmt.Errorf("write buf: %w", err)
 	}
@@ -250,9 +260,7 @@ func (app *App) deleteAttachment(ticketID int64, attachPath string) {
 	if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
 		log.Printf("delete attachment %s: %v", fullPath, err)
 	}
-	// Also try to remove the directory if empty.
-	dir := filepath.Dir(fullPath)
-	_ = os.Remove(dir) // silently fails if not empty
+	_ = os.Remove(filepath.Dir(fullPath)) // remove dir if empty
 	if _, err := app.DB.Exec(`UPDATE tickets SET attachment_path = '' WHERE id = ?`, ticketID); err != nil {
 		log.Printf("clear attachment_path for ticket %d: %v", ticketID, err)
 	}
@@ -295,9 +303,47 @@ func (app *App) TicketsLookupHandler(w http.ResponseWriter, r *http.Request) {
 	app.renderTemplate(w, "tickets.html", map[string]interface{}{"Tickets": tickets, "F3Name": f3Name})
 }
 
+// TicketDetailHandler handles both viewing a ticket (GET) and closing it (POST …/close).
 func (app *App) TicketDetailHandler(w http.ResponseWriter, r *http.Request) {
-	idStr := strings.TrimPrefix(r.URL.Path, "/ticket/")
-	if idStr == "" || r.URL.Path == "/ticket" {
+	path := r.URL.Path
+
+	// ── Close action ──────────────────────────────────────────────
+	if strings.HasSuffix(path, "/close") {
+		if r.Method != http.MethodPost {
+			http.Redirect(w, r, strings.TrimSuffix(path, "/close"), http.StatusSeeOther)
+			return
+		}
+		idStr := strings.TrimPrefix(strings.TrimSuffix(path, "/close"), "/ticket/")
+		var id int64
+		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		// Only close tickets that aren't already done.
+		var status string
+		var attachPath sql.NullString
+		err := app.DB.QueryRow(`SELECT status, attachment_path FROM tickets WHERE id = ?`, id).Scan(&status, &attachPath)
+		if err == sql.ErrNoRows {
+			http.NotFound(w, r)
+			return
+		}
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		if canClose(status) {
+			app.deleteAttachment(id, attachPath.String)
+			_, _ = app.DB.Exec(
+				`UPDATE tickets SET status = 'closed', resolved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, id,
+			)
+		}
+		http.Redirect(w, r, "/ticket/"+formatID(id), http.StatusSeeOther)
+		return
+	}
+
+	// ── View ticket ───────────────────────────────────────────────
+	idStr := strings.TrimPrefix(path, "/ticket/")
+	if idStr == "" || path == "/ticket" {
 		http.Redirect(w, r, "/tickets", http.StatusSeeOther)
 		return
 	}
@@ -330,7 +376,10 @@ func (app *App) TicketDetailHandler(w http.ResponseWriter, r *http.Request) {
 	if resolvedAt.Valid {
 		t.ResolvedAt = &resolvedAt.String
 	}
-	app.renderTemplate(w, "ticket_detail.html", map[string]interface{}{"Ticket": t})
+	app.renderTemplate(w, "ticket_detail.html", map[string]interface{}{
+		"Ticket":   t,
+		"CanClose": canClose(t.Status),
+	})
 }
 
 func (app *App) TipsPageHandler(w http.ResponseWriter, r *http.Request) {
@@ -350,10 +399,6 @@ func (app *App) TipsPageHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) AdminDashboardHandler(w http.ResponseWriter, r *http.Request) {
-	if !app.adminAuthenticated(r) {
-		app.renderTemplate(w, "admin_login.html", nil)
-		return
-	}
 	rows, err := app.DB.Query(
 		`SELECT id, created_at, updated_at, status, ticket_type, hospital_name, f3_name, ao, event_date, url, description, admin_notes, attachment_path, resolved_at FROM tickets ORDER BY created_at DESC`,
 	)
@@ -384,25 +429,7 @@ func (app *App) AdminDashboardHandler(w http.ResponseWriter, r *http.Request) {
 	app.renderTemplate(w, "admin.html", map[string]interface{}{"Tickets": tickets})
 }
 
-func (app *App) AdminLoginHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Redirect(w, r, "/admin", http.StatusSeeOther)
-		return
-	}
-	password := r.FormValue("password")
-	if password != app.AdminPassword {
-		app.renderTemplate(w, "admin_login.html", map[string]interface{}{"Error": "Invalid password."})
-		return
-	}
-	app.setAdminCookie(w, true)
-	http.Redirect(w, r, "/admin", http.StatusSeeOther)
-}
-
 func (app *App) AdminUpdateTicketHandler(w http.ResponseWriter, r *http.Request) {
-	if !app.adminAuthenticated(r) {
-		http.Redirect(w, r, "/admin", http.StatusSeeOther)
-		return
-	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -427,7 +454,7 @@ func (app *App) AdminUpdateTicketHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// If resolving or closing, delete any attachment for this ticket.
+	// Delete attachment when resolving or closing.
 	if status == "resolved" || status == "closed" {
 		var attachPath sql.NullString
 		if err := app.DB.QueryRow(`SELECT attachment_path FROM tickets WHERE id = ?`, id).Scan(&attachPath); err == nil {
@@ -453,10 +480,6 @@ func (app *App) AdminUpdateTicketHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (app *App) AdminTipsHandler(w http.ResponseWriter, r *http.Request) {
-	if !app.adminAuthenticated(r) {
-		http.Redirect(w, r, "/admin", http.StatusSeeOther)
-		return
-	}
 	tipsPath := filepath.Join(app.DataDir, "tips.md")
 	if r.Method == http.MethodPost {
 		body := r.FormValue("body")
@@ -481,6 +504,14 @@ func (app *App) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ok"))
 }
 
+// AdminLogoutHandler clears Basic Auth by always returning 401.
+// The XHR in admin.html sends deliberately wrong credentials here first,
+// which causes the browser to cache the wrong creds and effectively log out.
+func (app *App) AdminLogoutHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("WWW-Authenticate", `Basic realm="F3 Denver Admin"`)
+	w.WriteHeader(http.StatusUnauthorized)
+}
+
 func nullEmpty(s string) interface{} {
 	if s == "" {
 		return nil
@@ -491,9 +522,6 @@ func nullEmpty(s string) interface{} {
 func formatID(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
-
-const adminCookieName = "f3help_admin"
-const adminCookieSecret = "f3denver_help_admin"
 
 const defaultTipsMarkdown = `# Tips & Troubleshooting
 
@@ -533,35 +561,6 @@ var AOsList = []string{
 	"ao_nomad", "ao_northfield", "ao_off-the-books", "ao_off-the-books_broomfield",
 	"ao_outback-run-club", "ao_parker", "ao_red-rucks", "ao_the-grindstone", "ao_the-pit",
 	"ao_trailhead-run-or-ruck", "ao_wash-park", "ao_downrange_cos_valhalla",
-}
-
-func (app *App) adminCookieValue() string {
-	mac := hmac.New(sha256.New, []byte(app.AdminPassword))
-	mac.Write([]byte(adminCookieSecret))
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
-func (app *App) setAdminCookie(w http.ResponseWriter, ok bool) {
-	value := ""
-	if ok {
-		value = app.adminCookieValue()
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     adminCookieName,
-		Value:    value,
-		Path:     "/",
-		MaxAge:   86400 * 7, // 7 days
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-func (app *App) adminAuthenticated(r *http.Request) bool {
-	c, err := r.Cookie(adminCookieName)
-	if err != nil || c.Value == "" {
-		return false
-	}
-	return c.Value == app.adminCookieValue()
 }
 
 func (app *App) renderTemplate(w http.ResponseWriter, name string, data interface{}) {
