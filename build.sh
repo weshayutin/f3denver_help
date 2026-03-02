@@ -3,28 +3,19 @@ set -euo pipefail
 
 IMAGE="quay.io/migtools/f3denver-help"
 TAG="${1:-latest}"
-PLATFORMS="linux/amd64,linux/arm64"
 MANIFEST="${IMAGE}:${TAG}"
 
-echo "==> Building multi-arch images for ${MANIFEST}"
-echo "    Platforms: ${PLATFORMS}"
+echo "==> Building linux/amd64 image: ${MANIFEST}"
 
-podman manifest rm "${MANIFEST}" 2>/dev/null || true
-podman manifest create "${MANIFEST}"
-
-for ARCH in amd64 arm64; do
-    echo ""
-    echo "==> Building linux/${ARCH}..."
-    podman build \
-        --platform "linux/${ARCH}" \
-        --manifest "${MANIFEST}" \
-        -f Dockerfile \
-        .
-done
+podman build \
+    --platform "linux/amd64" \
+    -t "${MANIFEST}" \
+    -f Dockerfile \
+    .
 
 echo ""
-echo "==> Pushing manifest ${MANIFEST}..."
-podman manifest push --all "${MANIFEST}" "docker://${MANIFEST}"
+echo "==> Pushing ${MANIFEST}..."
+podman push "${MANIFEST}"
 
 echo ""
-echo "==> Done. Pushed ${MANIFEST} (amd64 + arm64)"
+echo "==> Done. Pushed ${MANIFEST} (amd64)"

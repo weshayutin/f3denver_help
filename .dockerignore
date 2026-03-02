@@ -1,10 +1,8 @@
 .git
 .env
 *.db
-data/*.db
-data/tips.md
-cache/*.json
-.gitignore
-README.md
+data/
+f3help
 *.md
-!data/tips.md
+!README.md
+linode/
