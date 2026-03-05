@@ -1,44 +1,85 @@
-{{define "title"}}My Tickets — F3 Denver Help Desk{{end}}
+{{define "title"}}Tickets — F3 Denver Help Desk{{end}}
+{{define "bodyclass"}}tickets-page{{end}}
 {{define "content"}}
-<h1>Look Up Your Tickets</h1>
+<h1>Tickets</h1>
 
-<div class="lookup-form">
-  <h2>Enter your F3 name to see your tickets</h2>
-  <form method="GET" action="/tickets">
-    <div class="form-group">
-      <label for="f3_name">Your F3 Name</label>
+<div class="filter-bar">
+  <form method="GET" action="/tickets" class="filter-form">
+
+    <div class="filter-group">
+      <label for="status">Status</label>
+      <select id="status" name="status" class="filter-select" onchange="this.form.submit()">
+        <option value="open"{{if eq .Status "open"}} selected{{end}}>Open</option>
+        <option value="in_progress"{{if eq .Status "in_progress"}} selected{{end}}>In Progress</option>
+        <option value="resolved"{{if eq .Status "resolved"}} selected{{end}}>Resolved</option>
+        <option value="closed"{{if eq .Status "closed"}} selected{{end}}>Closed</option>
+        <option value="all"{{if eq .Status "all"}} selected{{end}}>All Statuses</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label for="f3_name">F3 Name</label>
       <input type="text"
              id="f3_name"
              name="f3_name"
+             list="f3-name-list"
              value="{{.F3Name}}"
-             placeholder="e.g. Roadrunner"
-             autocomplete="off"
-             autofocus>
+             placeholder="All PAX"
+             class="filter-input"
+             autocomplete="off">
+      <datalist id="f3-name-list">
+        {{range .F3Names}}<option value="{{.}}">{{end}}
+      </datalist>
     </div>
-    <button type="submit" class="btn">Look Up Tickets</button>
+
+    <div class="filter-actions">
+      <button type="submit" class="btn btn-sm">Apply</button>
+      {{if or .F3Name (ne .Status "open")}}
+        <a href="/tickets" class="btn btn-sm btn-secondary">Reset</a>
+      {{end}}
+    </div>
+
   </form>
 </div>
 
-{{if .F3Name}}
-  {{if .Tickets}}
-    <p class="ticket-count">Found <strong>{{len .Tickets}}</strong> ticket(s) for <strong>{{.F3Name}}</strong></p>
-    {{range .Tickets}}
-    <div class="ticket-card">
-      <div class="ticket-card-meta">
-        <div class="ticket-card-id">Ticket #{{.ID}}</div>
-        <div class="ticket-card-type">{{.TicketType}}</div>
-        <div class="ticket-card-date">Submitted {{.CreatedAt}}</div>
-      </div>
-      <div class="ticket-card-right">
-        <span class="status status-{{.Status}}">{{.Status}}</span>
-        <a href="/ticket/{{.ID}}" class="btn btn-sm">View Details</a>
-      </div>
-    </div>
-    {{end}}
-  {{else}}
-    <div class="no-tickets">
-      No tickets found for <strong>{{.F3Name}}</strong>. Double-check the spelling of your F3 name.
-    </div>
-  {{end}}
+{{if .Tickets}}
+  <p class="ticket-count">
+    <strong>{{len .Tickets}}</strong> ticket{{if ne (len .Tickets) 1}}s{{end}}
+    {{if .F3Name}} for <strong>{{.F3Name}}</strong>{{end}}
+    {{if ne .Status "all"}} &middot; status: <span class="status status-{{.Status}}">{{.Status}}</span>{{end}}
+  </p>
+
+  <div class="table-wrap">
+    <table class="ticket-table tickets-browse-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Type</th>
+          <th>F3 Name</th>
+          <th>Description</th>
+          <th>Status</th>
+          <th>Submitted</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Tickets}}
+        <tr>
+          <td class="ticket-id-cell">{{.ID}}</td>
+          <td>{{.TicketType}}</td>
+          <td><strong>{{.F3Name}}</strong></td>
+          <td class="desc-cell">{{.Description}}</td>
+          <td><span class="status status-{{.Status}}">{{.Status}}</span></td>
+          <td class="date-cell">{{.CreatedAt}}</td>
+          <td><a href="/ticket/{{.ID}}" class="btn btn-sm">View</a></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+{{else}}
+  <div class="no-tickets">
+    No tickets found{{if .F3Name}} for <strong>{{.F3Name}}</strong>{{end}}{{if ne .Status "all"}} with status <strong>{{.Status}}</strong>{{end}}. Try changing the filters above.
+  </div>
 {{end}}
 {{end}}

@@ -92,7 +92,7 @@
 </div>
 
 <div class="ticket-actions">
-  <a href="/tickets" class="btn btn-secondary">&larr; Back to My Tickets</a>
+  <a href="/tickets" class="btn btn-secondary">&larr; Back to Tickets</a>
   <a href="/" class="btn btn-secondary">Submit Another Ticket</a>
   {{if .CanClose}}
   <form method="POST" action="/ticket/{{.Ticket.ID}}/close" style="display:inline"

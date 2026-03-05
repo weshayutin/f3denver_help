@@ -268,14 +268,25 @@ func (app *App) deleteAttachment(ticketID int64, attachPath string) {
 
 func (app *App) TicketsLookupHandler(w http.ResponseWriter, r *http.Request) {
 	f3Name := strings.TrimSpace(r.FormValue("f3_name"))
-	if f3Name == "" {
-		app.renderTemplate(w, "tickets.html", map[string]interface{}{"Tickets": nil, "F3Name": ""})
-		return
+	status := strings.TrimSpace(r.FormValue("status"))
+	if status == "" {
+		status = "open"
 	}
-	rows, err := app.DB.Query(
-		`SELECT id, created_at, updated_at, status, ticket_type, hospital_name, f3_name, ao, event_date, url, description, admin_notes, attachment_path, resolved_at FROM tickets WHERE f3_name = ? ORDER BY created_at DESC`,
-		f3Name,
-	)
+
+	query := `SELECT id, created_at, updated_at, status, ticket_type, hospital_name, f3_name, ao, event_date, url, description, admin_notes, attachment_path, resolved_at FROM tickets WHERE 1=1`
+	var args []interface{}
+
+	if status != "all" {
+		query += ` AND status = ?`
+		args = append(args, status)
+	}
+	if f3Name != "" {
+		query += ` AND f3_name = ?`
+		args = append(args, f3Name)
+	}
+	query += ` ORDER BY created_at DESC`
+
+	rows, err := app.DB.Query(query, args...)
 	if err != nil {
 		log.Printf("query tickets: %v", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -300,7 +311,26 @@ func (app *App) TicketsLookupHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		tickets = append(tickets, t)
 	}
-	app.renderTemplate(w, "tickets.html", map[string]interface{}{"Tickets": tickets, "F3Name": f3Name})
+
+	// Collect distinct F3 names for the filter dropdown.
+	var f3Names []string
+	nameRows, err := app.DB.Query(`SELECT DISTINCT f3_name FROM tickets ORDER BY f3_name`)
+	if err == nil {
+		defer nameRows.Close()
+		for nameRows.Next() {
+			var name string
+			if nameRows.Scan(&name) == nil {
+				f3Names = append(f3Names, name)
+			}
+		}
+	}
+
+	app.renderTemplate(w, "tickets.html", map[string]interface{}{
+		"Tickets": tickets,
+		"F3Name":  f3Name,
+		"Status":  status,
+		"F3Names": f3Names,
+	})
 }
 
 // TicketDetailHandler handles both viewing a ticket (GET) and closing it (POST …/close).
